@@ -1,0 +1,13 @@
+# Build artifacts
+build/
+bin/
+price_alert
+run_tests
+run_tests_asan
+*.o
+*.d
+*.a
+
+# OS files
+.DS_Store
+Thumbs.db
