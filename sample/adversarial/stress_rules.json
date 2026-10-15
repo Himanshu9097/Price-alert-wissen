@@ -1,0 +1,46 @@
+[
+  {
+    "id": "r_infy_down",
+    "instrument": "INFY",
+    "type": "level",
+    "direction": "below",
+    "level": 1500
+  },
+  {
+    "id": "r_infy_up",
+    "instrument": "INFY",
+    "type": "level",
+    "direction": "above",
+    "level": 1550
+  },
+  {
+    "id": "r_tcs_golden",
+    "instrument": "TCS",
+    "type": "ma_cross",
+    "short": 5,
+    "long": 20,
+    "direction": "above"
+  },
+  {
+    "id": "r_rel_death",
+    "instrument": "RELIANCE",
+    "type": "ma_cross",
+    "short": 3,
+    "long": 10,
+    "direction": "below"
+  },
+  {
+    "id": "r_hdfc_level",
+    "instrument": "HDFCBANK",
+    "type": "level",
+    "direction": "above",
+    "level": 1600
+  },
+  {
+    "id": "r_phantom",
+    "instrument": "TESLA",
+    "type": "level",
+    "direction": "above",
+    "level": 250
+  }
+]

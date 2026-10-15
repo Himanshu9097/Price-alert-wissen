@@ -1,0 +1,5 @@
+2026-09-03 r_infy_down INFY level below 1500
+2026-09-04 r_hdfc_level HDFCBANK level above 1600
+2026-09-07 r_infy_up INFY level above 1550
+2026-09-16 r_rel_death RELIANCE ma_cross 3/10 below
+2026-09-24 r_tcs_golden TCS ma_cross 5/20 above

@@ -76,7 +76,7 @@ During code review and verification, two critical domain defects were identified
 
 ## 4. Verification & Testing Summary
 
-- **Unit & Integration Suite**: 31 unit tests covering ISO calendar rules, header/format validation, duplicate rejection, incomplete MA windows, and multi-instrument sorting.
+- **Unit & Integration Suite**: 35 unit & integration tests covering ISO calendar rules, header/format validation, duplicate rejection, boundary oscillations, incomplete MA windows, and multi-instrument sorting.
 - **CLI Contract Suite**: 9 automated end-to-end process execution tests verifying exit codes, stderr error routing, and clean stdout.
 - **Memory & Sanitizer Safety**: Tested with Clang `-fsanitize=address,undefined` (0 leaks, 0 errors).
 - **Exact Brief Compliance**: Output on sample files matches the assessment brief verbatim.

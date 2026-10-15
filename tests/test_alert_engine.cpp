@@ -218,3 +218,90 @@ TEST_CASE(test_alert_engine_instrument_not_in_data) {
     auto alerts = engine.evaluate(obs, rules);
     ASSERT_EQ(alerts.size(), 0UL);
 }
+
+TEST_CASE(test_alert_engine_level_oscillation_around_boundary) {
+    // Level is 100.0
+    // Day 1: 90 (Below)
+    // Day 2: 100 (Touches level) -> No alert
+    // Day 3: 110 (Above) -> Crosses Above (Alert 1: Day 3)
+    // Day 4: 100 (Touches level) -> No alert
+    // Day 5: 95 (Below) -> Crosses Below (Alert 2: Day 5)
+    // Day 6: 100 (Touches level) -> No alert
+    // Day 7: 90 (Below) -> Bounced back below without crossing above (No alert)
+    std::vector<PriceObservation> obs = {
+        {"2026-09-01", "TEST", 90.0},
+        {"2026-09-02", "TEST", 100.0},
+        {"2026-09-03", "TEST", 110.0},
+        {"2026-09-04", "TEST", 100.0},
+        {"2026-09-05", "TEST", 95.0},
+        {"2026-09-06", "TEST", 100.0},
+        {"2026-09-07", "TEST", 90.0}
+    };
+
+    std::vector<Rule> rules = {
+        {"r_above", "TEST", RuleType::Level, Direction::Above, 100.0, "100", 0, 0},
+        {"r_below", "TEST", RuleType::Level, Direction::Below, 100.0, "100", 0, 0}
+    };
+
+    AlertEngine engine;
+    auto alerts = engine.evaluate(obs, rules);
+
+    ASSERT_EQ(alerts.size(), 2UL);
+    ASSERT_EQ(alerts[0].date, "2026-09-03");
+    ASSERT_EQ(alerts[0].rule_id, "r_above");
+
+    ASSERT_EQ(alerts[1].date, "2026-09-05");
+    ASSERT_EQ(alerts[1].rule_id, "r_below");
+}
+
+TEST_CASE(test_alert_engine_ma_cross_below_direction) {
+    // 2-day / 4-day MA with direction "below"
+    // Day 1: 100
+    // Day 2: 100
+    // Day 3: 100
+    // Day 4: 100 -> Baseline: 2-SMA=100, 4-SMA=100 (Equal)
+    // Day 5: 120 -> 2-SMA=(100+120)/2=110, 4-SMA=(100+100+100+120)/4=105 (Above)
+    // Day 6: 60  -> 2-SMA=(120+60)/2=90,  4-SMA=(100+100+120+60)/4=95   (Below) -> Crosses Below!
+    std::vector<PriceObservation> obs = {
+        {"2026-09-01", "MA_TEST", 100.0},
+        {"2026-09-02", "MA_TEST", 100.0},
+        {"2026-09-03", "MA_TEST", 100.0},
+        {"2026-09-04", "MA_TEST", 100.0},
+        {"2026-09-05", "MA_TEST", 120.0},
+        {"2026-09-06", "MA_TEST", 60.0}
+    };
+
+    std::vector<Rule> rules = {
+        {"r_death_cross", "MA_TEST", RuleType::MACross, Direction::Below, 0.0, "", 2, 4}
+    };
+
+    AlertEngine engine;
+    auto alerts = engine.evaluate(obs, rules);
+
+    ASSERT_EQ(alerts.size(), 1UL);
+    ASSERT_EQ(alerts[0].date, "2026-09-06");
+    ASSERT_EQ(alerts[0].rule_id, "r_death_cross");
+    ASSERT_EQ(alerts[0].details, "ma_cross 2/4 below");
+}
+
+TEST_CASE(test_alert_engine_rule_id_lexicographical_sort) {
+    // 3 rules firing on the exact same date for the same instrument
+    std::vector<PriceObservation> obs = {
+        {"2026-09-01", "MULTI", 50.0},
+        {"2026-09-02", "MULTI", 150.0} // Crosses above 60, 80, 100
+    };
+
+    std::vector<Rule> rules = {
+        {"rule_C", "MULTI", RuleType::Level, Direction::Above, 100.0, "100", 0, 0},
+        {"rule_A", "MULTI", RuleType::Level, Direction::Above, 60.0, "60", 0, 0},
+        {"rule_B", "MULTI", RuleType::Level, Direction::Above, 80.0, "80", 0, 0}
+    };
+
+    AlertEngine engine;
+    auto alerts = engine.evaluate(obs, rules);
+
+    ASSERT_EQ(alerts.size(), 3UL);
+    ASSERT_EQ(alerts[0].rule_id, "rule_A");
+    ASSERT_EQ(alerts[1].rule_id, "rule_B");
+    ASSERT_EQ(alerts[2].rule_id, "rule_C");
+}

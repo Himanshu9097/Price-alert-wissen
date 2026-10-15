@@ -53,3 +53,30 @@ TEST_CASE(test_integration_nonexistent_files) {
     JsonParser json_parser;
     ASSERT_THROWS(json_parser.parse_file("sample/nonexistent_rules.json"), std::runtime_error);
 }
+
+TEST_CASE(test_integration_adversarial_stress_dataset) {
+    std::string prices_file = resolve_sample_path("adversarial/stress_prices.csv");
+    std::string rules_file = resolve_sample_path("adversarial/stress_rules.json");
+    std::string expected_file_path = resolve_sample_path("adversarial/expected_output.txt");
+
+    CsvParser csv_parser;
+    auto obs = csv_parser.parse_file(prices_file);
+
+    JsonParser json_parser;
+    auto rules = json_parser.parse_file(rules_file);
+
+    AlertEngine engine;
+    auto alerts = engine.evaluate(obs, rules);
+
+    std::ostringstream oss;
+    OutputFormatter::print_alerts(alerts, oss);
+    std::string actual_output = oss.str();
+
+    std::ifstream expected_file(expected_file_path);
+    ASSERT_TRUE(expected_file.is_open());
+    std::stringstream buffer;
+    buffer << expected_file.rdbuf();
+    std::string expected_output = buffer.str();
+
+    ASSERT_EQ(actual_output, expected_output);
+}
