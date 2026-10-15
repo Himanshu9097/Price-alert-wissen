@@ -112,9 +112,10 @@ std::vector<PriceObservation> CsvParser::parse_stream(std::istream& in) const {
             std::string c0 = cols[0];
             std::string c1 = cols[1];
             std::string c2 = cols[2];
-            std::transform(c0.begin(), c0.end(), c0.begin(), ::tolower);
-            std::transform(c1.begin(), c1.end(), c1.begin(), ::tolower);
-            std::transform(c2.begin(), c2.end(), c2.begin(), ::tolower);
+            auto to_lower_safe = [](unsigned char c) { return static_cast<char>(std::tolower(c)); };
+            std::transform(c0.begin(), c0.end(), c0.begin(), to_lower_safe);
+            std::transform(c1.begin(), c1.end(), c1.begin(), to_lower_safe);
+            std::transform(c2.begin(), c2.end(), c2.begin(), to_lower_safe);
 
             if (c0 != "date" || c1 != "instrument" || c2 != "close") {
                 throw std::runtime_error("CSV Error: line " + std::to_string(line_number) +

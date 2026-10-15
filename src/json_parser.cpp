@@ -167,27 +167,33 @@ std::vector<Rule> JsonParser::parse_stream(std::istream& in) const {
                 throw std::runtime_error("JSON Error: " + rule_loc + " missing required integer field 'long'");
             }
 
-            int short_win = item["short"].get<int>();
-            int long_win = item["long"].get<int>();
+            int64_t short_raw = 0;
+            int64_t long_raw = 0;
+            try {
+                short_raw = item["short"].get<int64_t>();
+                long_raw = item["long"].get<int64_t>();
+            } catch (const std::exception&) {
+                throw std::runtime_error("JSON Error: " + rule_loc + " integer window out of representable range");
+            }
 
-            if (short_win < 1) {
+            if (short_raw < 1) {
                 throw std::runtime_error("JSON Error: " + rule_loc + " 'short' window must be at least 1");
             }
-            if (long_win < 1) {
+            if (long_raw < 1) {
                 throw std::runtime_error("JSON Error: " + rule_loc + " 'long' window must be at least 1");
             }
-            if (short_win > config_.max_ma_window || long_win > config_.max_ma_window) {
+            if (short_raw > config_.max_ma_window || long_raw > config_.max_ma_window) {
                 throw std::runtime_error("JSON Error: " + rule_loc + " moving average window exceeds maximum limit (" +
                                          std::to_string(config_.max_ma_window) + ")");
             }
-            if (short_win >= long_win) {
+            if (short_raw >= long_raw) {
                 throw std::runtime_error("JSON Error: " + rule_loc + " 'short' window (" +
-                                         std::to_string(short_win) + ") must be strictly less than 'long' window (" +
-                                         std::to_string(long_win) + ")");
+                                         std::to_string(short_raw) + ") must be strictly less than 'long' window (" +
+                                         std::to_string(long_raw) + ")");
             }
 
-            rule.short_window = short_win;
-            rule.long_window = long_win;
+            rule.short_window = static_cast<int>(short_raw);
+            rule.long_window = static_cast<int>(long_raw);
         }
 
         rules.push_back(rule);

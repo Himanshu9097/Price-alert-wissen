@@ -116,6 +116,24 @@ TEST_CASE(test_json_parser_invalid_ma_windows) {
         std::istringstream iss(json_str);
         ASSERT_THROWS(JsonParser{}.parse_stream(iss), std::runtime_error);
     }
+    // Extremely large positive integer window exceeding limits
+    {
+        std::string json_str = R"([{"id": "r1", "instrument": "TCS", "type": "ma_cross", "short": 5, "long": 999999999999999999, "direction": "above"}])";
+        std::istringstream iss(json_str);
+        ASSERT_THROWS(JsonParser{}.parse_stream(iss), std::runtime_error);
+    }
+    // Extremely large negative integer window
+    {
+        std::string json_str = R"([{"id": "r1", "instrument": "TCS", "type": "ma_cross", "short": -999999999999999999, "long": 20, "direction": "above"}])";
+        std::istringstream iss(json_str);
+        ASSERT_THROWS(JsonParser{}.parse_stream(iss), std::runtime_error);
+    }
+    // Window exceeding max_ma_window (10,000)
+    {
+        std::string json_str = R"([{"id": "r1", "instrument": "TCS", "type": "ma_cross", "short": 5, "long": 20000, "direction": "above"}])";
+        std::istringstream iss(json_str);
+        ASSERT_THROWS(JsonParser{}.parse_stream(iss), std::runtime_error);
+    }
 }
 
 TEST_CASE(test_json_parser_unexpected_field) {

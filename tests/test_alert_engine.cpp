@@ -399,3 +399,58 @@ TEST_CASE(test_alert_engine_crossover_immediately_on_day_after_long_window) {
     ASSERT_EQ(alerts[0].date, "2026-09-04");
     ASSERT_EQ(alerts[0].rule_id, "r_early");
 }
+
+TEST_CASE(test_alert_engine_end_to_end_matches_direct_summation_reference) {
+    // Generate a 150-day dataset with oscillating prices causing multiple crossovers
+    std::vector<PriceObservation> obs;
+    obs.reserve(150);
+    double price = 100.0;
+    for (int i = 0; i < 150; ++i) {
+        // Create sine-wave like oscillations causing predictable crossing patterns
+        price += (i % 20 < 10) ? 3.5 : -3.5;
+        std::string month = (i / 28 < 9) ? ("0" + std::to_string(i / 28 + 1)) : std::to_string(i / 28 + 1);
+        std::string day = (i % 28 < 9) ? ("0" + std::to_string(i % 28 + 1)) : std::to_string(i % 28 + 1);
+        obs.push_back({"2026-" + month + "-" + day, "OSC", price});
+    }
+
+    Rule rule_above{"r_above", "OSC", RuleType::MACross, Direction::Above, 0.0, "", 5, 20};
+    Rule rule_below{"r_below", "OSC", RuleType::MACross, Direction::Below, 0.0, "", 5, 20};
+    std::vector<Rule> rules = {rule_above, rule_below};
+
+    // 1. Independent reference calculation using direct summation (compute_sma_reference)
+    std::vector<std::pair<std::string, std::string>> ref_alerts; // {date, rule_id}
+    
+    // Baseline at index 19 (Day 20)
+    double short_base = AlertEngine::compute_sma_reference(obs, 19, 5);
+    double long_base = AlertEngine::compute_sma_reference(obs, 19, 20);
+    int prev_sign = (short_base - long_base > 1e-9) ? 1 : ((short_base - long_base < -1e-9) ? -1 : 0);
+
+    for (size_t t = 20; t < obs.size(); ++t) {
+        double s = AlertEngine::compute_sma_reference(obs, t, 5);
+        double l = AlertEngine::compute_sma_reference(obs, t, 20);
+        int curr_sign = (s - l > 1e-9) ? 1 : ((s - l < -1e-9) ? -1 : 0);
+
+        if (curr_sign == 1) {
+            if (prev_sign == -1) {
+                ref_alerts.push_back({obs[t].date, "r_above"});
+            }
+            prev_sign = 1;
+        } else if (curr_sign == -1) {
+            if (prev_sign == 1) {
+                ref_alerts.push_back({obs[t].date, "r_below"});
+            }
+            prev_sign = -1;
+        }
+    }
+
+    // 2. AlertEngine::evaluate() execution
+    AlertEngine engine;
+    auto actual_alerts = engine.evaluate(obs, rules);
+
+    ASSERT_TRUE(actual_alerts.size() > 0UL);
+    ASSERT_EQ(actual_alerts.size(), ref_alerts.size());
+    for (size_t i = 0; i < actual_alerts.size(); ++i) {
+        ASSERT_EQ(actual_alerts[i].date, ref_alerts[i].first);
+        ASSERT_EQ(actual_alerts[i].rule_id, ref_alerts[i].second);
+    }
+}
