@@ -17,16 +17,26 @@ AlertEngine::Side AlertEngine::get_side(double value, double threshold) {
     return Side::Equal;
 }
 
-double AlertEngine::compute_sma(
+double AlertEngine::compute_window_sum(
     const std::vector<PriceObservation>& series,
     size_t end_idx,
-    int window) {
+    size_t window) {
     double sum = 0.0;
-    size_t start_idx = end_idx - static_cast<size_t>(window) + 1;
+    size_t start_idx = end_idx - window + 1;
     for (size_t i = start_idx; i <= end_idx; ++i) {
         sum += series[i].close;
     }
-    return sum / static_cast<double>(window);
+    return sum;
+}
+
+double AlertEngine::compute_sma_reference(
+    const std::vector<PriceObservation>& series,
+    size_t end_idx,
+    int window) {
+    if (window <= 0 || end_idx + 1 < static_cast<size_t>(window)) {
+        return 0.0;
+    }
+    return compute_window_sum(series, end_idx, static_cast<size_t>(window)) / static_cast<double>(window);
 }
 
 void AlertEngine::evaluate_level_rule(
@@ -34,10 +44,11 @@ void AlertEngine::evaluate_level_rule(
     const std::vector<PriceObservation>& series,
     std::vector<Alert>& out_alerts) const {
     if (series.size() < 2) {
-        // A crossover requires at least 2 consecutive observations
+        // A genuine crossing requires at least 2 consecutive observations
         return;
     }
 
+    // Initialize previous confirmed state from day 0
     Side prev_side = get_side(series[0].close, rule.level);
 
     for (size_t t = 1; t < series.size(); ++t) {
@@ -45,6 +56,7 @@ void AlertEngine::evaluate_level_rule(
 
         if (rule.direction == Direction::Above) {
             if (curr_side == Side::Above) {
+                // Fired only if transitioned from strictly below (or originated from below before touching level)
                 if (prev_side == Side::Below) {
                     out_alerts.push_back(Alert{
                         series[t].date,
@@ -59,7 +71,9 @@ void AlertEngine::evaluate_level_rule(
             } else if (curr_side == Side::Below) {
                 prev_side = Side::Below;
             }
-            // If Side::Equal, prev_side remains unchanged (boundary touch)
+            // Note: If curr_side == Side::Equal, prev_side remains unchanged.
+            // This preserves the prior side during boundary touches, correctly recognizing
+            // a subsequent breakthrough without creating a false alarm on a bounce.
         } else if (rule.direction == Direction::Below) {
             if (curr_side == Side::Below) {
                 if (prev_side == Side::Above) {
@@ -76,7 +90,7 @@ void AlertEngine::evaluate_level_rule(
             } else if (curr_side == Side::Above) {
                 prev_side = Side::Above;
             }
-            // If Side::Equal, prev_side remains unchanged (boundary touch)
+            // Note: If curr_side == Side::Equal, prev_side remains unchanged.
         }
     }
 }
@@ -89,24 +103,41 @@ void AlertEngine::evaluate_ma_cross_rule(
     size_t short_win = static_cast<size_t>(rule.short_window);
 
     // Both moving averages need a full window before they are defined.
-    // To detect a crossover, we need at least (long_window + 1) trading days:
-    // day (long_window - 1) establishes the baseline state,
-    // and day (long_window) is the first day that can trigger a crossover.
+    // Day (long_window - 1) is the first day both MAs exist, establishing the initial baseline.
+    // Day (long_window) is the earliest day where a genuine crossover can be detected.
     if (series.size() <= long_win) {
         return;
     }
 
-    // Baseline at index (long_window - 1): first day both MAs exist
+    // 1. Establish baseline at index (long_window - 1)
     size_t baseline_idx = long_win - 1;
-    double short_sma_base = compute_sma(series, baseline_idx, static_cast<int>(short_win));
-    double long_sma_base = compute_sma(series, baseline_idx, static_cast<int>(long_win));
+    double short_sum = compute_window_sum(series, baseline_idx, short_win);
+    double long_sum = compute_window_sum(series, baseline_idx, long_win);
+
+    double short_sma_base = short_sum / static_cast<double>(short_win);
+    double long_sma_base = long_sum / static_cast<double>(long_win);
     Side prev_side = get_side(short_sma_base, long_sma_base);
 
     std::string ma_tag = std::to_string(rule.short_window) + "/" + std::to_string(rule.long_window);
 
+    // 2. Rolling sum computation O(1) per step with periodic re-anchoring
+    size_t steps_since_reanchor = 0;
+
     for (size_t t = long_win; t < series.size(); ++t) {
-        double short_sma = compute_sma(series, t, static_cast<int>(short_win));
-        double long_sma = compute_sma(series, t, static_cast<int>(long_win));
+        // Update rolling sums: add new incoming close, subtract outgoing close
+        short_sum += series[t].close - series[t - short_win].close;
+        long_sum += series[t].close - series[t - long_win].close;
+        ++steps_since_reanchor;
+
+        // Re-anchor every REANCHOR_INTERVAL steps to prevent IEEE-754 roundoff drift
+        if (steps_since_reanchor >= REANCHOR_INTERVAL) {
+            short_sum = compute_window_sum(series, t, short_win);
+            long_sum = compute_window_sum(series, t, long_win);
+            steps_since_reanchor = 0;
+        }
+
+        double short_sma = short_sum / static_cast<double>(short_win);
+        double long_sma = long_sum / static_cast<double>(long_win);
         Side curr_side = get_side(short_sma, long_sma);
 
         if (rule.direction == Direction::Above) {
@@ -125,7 +156,7 @@ void AlertEngine::evaluate_ma_cross_rule(
             } else if (curr_side == Side::Below) {
                 prev_side = Side::Below;
             }
-            // If Side::Equal, prev_side remains unchanged (boundary touch)
+            // If Side::Equal, prev_side remains unchanged
         } else if (rule.direction == Direction::Below) {
             if (curr_side == Side::Below) {
                 if (prev_side == Side::Above) {
@@ -142,7 +173,7 @@ void AlertEngine::evaluate_ma_cross_rule(
             } else if (curr_side == Side::Above) {
                 prev_side = Side::Above;
             }
-            // If Side::Equal, prev_side remains unchanged (boundary touch)
+            // If Side::Equal, prev_side remains unchanged
         }
     }
 }

@@ -305,3 +305,97 @@ TEST_CASE(test_alert_engine_rule_id_lexicographical_sort) {
     ASSERT_EQ(alerts[1].rule_id, "rule_B");
     ASSERT_EQ(alerts[2].rule_id, "rule_C");
 }
+
+TEST_CASE(test_alert_engine_rolling_sma_matches_reference_implementation) {
+    // Generate 600 synthetic prices with varying values spanning multiple re-anchoring cycles
+    std::vector<PriceObservation> series;
+    series.reserve(600);
+    double price = 1000.0;
+    for (int i = 0; i < 600; ++i) {
+        price += ((i % 2 == 0) ? 1.75 : -1.25) + (i % 7) * 0.10;
+        series.push_back({"2026-01-01", "TEST_SMA", price});
+    }
+
+    int window = 20;
+    // Compute moving averages using reference implementation and compare against rolling sum
+    double rolling_sum = 0.0;
+    for (size_t i = 0; i < static_cast<size_t>(window); ++i) {
+        rolling_sum += series[i].close;
+    }
+
+    constexpr size_t REANCHOR_INTERVAL = 256;
+    size_t steps_since_reanchor = 0;
+
+    for (size_t t = static_cast<size_t>(window); t < series.size(); ++t) {
+        rolling_sum += series[t].close - series[t - static_cast<size_t>(window)].close;
+        ++steps_since_reanchor;
+
+        if (steps_since_reanchor >= REANCHOR_INTERVAL) {
+            double recomputed = 0.0;
+            for (size_t j = t - static_cast<size_t>(window) + 1; j <= t; ++j) {
+                recomputed += series[j].close;
+            }
+            rolling_sum = recomputed;
+            steps_since_reanchor = 0;
+        }
+
+        double rolling_sma = rolling_sum / static_cast<double>(window);
+        double ref_sma = AlertEngine::compute_sma_reference(series, t, window);
+
+        // Difference must be smaller than 1e-11 (demonstrating zero cumulative drift)
+        double diff = std::abs(rolling_sma - ref_sma);
+        ASSERT_TRUE(diff < 1e-11);
+    }
+}
+
+TEST_CASE(test_alert_engine_ma_equality_touch_and_diverge) {
+    // 2-day vs 4-day moving average where MAs originate Below, touch Equal, and diverge Above
+    // Day 1 to 3: 100.0
+    // Day 4: 80.0 -> Baseline (Day 4): 2-SMA = 90.0, 4-SMA = 95.0 (Side::Below)
+    // Day 5: 120.0 -> Day 5: 2-SMA = (80+120)/2 = 100.0, 4-SMA = (100+100+80+120)/4 = 100.0 (Side::Equal touch)
+    // Day 6: 130.0 -> Day 6: 2-SMA = (120+130)/2 = 125.0, 4-SMA = (100+80+120+130)/4 = 107.5 (Side::Above) -> Fires!
+    std::vector<PriceObservation> obs = {
+        {"2026-09-01", "MA_EQ", 100.0},
+        {"2026-09-02", "MA_EQ", 100.0},
+        {"2026-09-03", "MA_EQ", 100.0},
+        {"2026-09-04", "MA_EQ", 80.0},
+        {"2026-09-05", "MA_EQ", 120.0},
+        {"2026-09-06", "MA_EQ", 130.0}
+    };
+
+    std::vector<Rule> rules = {
+        {"r_ma_eq", "MA_EQ", RuleType::MACross, Direction::Above, 0.0, "", 2, 4}
+    };
+
+    AlertEngine engine;
+    auto alerts = engine.evaluate(obs, rules);
+
+    ASSERT_EQ(alerts.size(), 1UL);
+    ASSERT_EQ(alerts[0].date, "2026-09-06");
+    ASSERT_EQ(alerts[0].rule_id, "r_ma_eq");
+}
+
+TEST_CASE(test_alert_engine_crossover_immediately_on_day_after_long_window) {
+    // 2-day / 3-day MA
+    // Day 1: 100
+    // Day 2: 100
+    // Day 3: 80 -> Baseline (Day 3): 2-SMA = (100+80)/2 = 90, 3-SMA = (100+100+80)/3 = 93.33 (Below)
+    // Day 4: 150 -> Day 4: 2-SMA = (80+150)/2 = 115, 3-SMA = (100+80+150)/3 = 110 (Above) -> Fires Day 4!
+    std::vector<PriceObservation> obs = {
+        {"2026-09-01", "MA_EARLY", 100.0},
+        {"2026-09-02", "MA_EARLY", 100.0},
+        {"2026-09-03", "MA_EARLY", 80.0},
+        {"2026-09-04", "MA_EARLY", 150.0}
+    };
+
+    std::vector<Rule> rules = {
+        {"r_early", "MA_EARLY", RuleType::MACross, Direction::Above, 0.0, "", 2, 3}
+    };
+
+    AlertEngine engine;
+    auto alerts = engine.evaluate(obs, rules);
+
+    ASSERT_EQ(alerts.size(), 1UL);
+    ASSERT_EQ(alerts[0].date, "2026-09-04");
+    ASSERT_EQ(alerts[0].rule_id, "r_early");
+}

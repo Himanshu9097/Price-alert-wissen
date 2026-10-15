@@ -72,7 +72,10 @@ std::vector<PriceObservation> CsvParser::parse_file(const std::string& filepath)
     }
 
     auto file_size = std::filesystem::file_size(filepath, ec);
-    if (!ec && file_size > config_.max_file_size_bytes) {
+    if (ec) {
+        throw std::runtime_error("CSV Error: unable to query file size: " + ec.message() + " (" + filepath + ")");
+    }
+    if (file_size > config_.max_file_size_bytes) {
         throw std::runtime_error("CSV Error: file size exceeds maximum permitted limit (" +
                                  std::to_string(config_.max_file_size_bytes) + " bytes): " + filepath);
     }
