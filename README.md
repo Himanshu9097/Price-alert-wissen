@@ -7,35 +7,47 @@ Production-grade command-line tool built for the Wissen Technology Campus Assess
 ## 1. Quick Start & Build Instructions
 
 ### Prerequisites
-- Any C++17 compatible compiler (`clang++` $\ge 10$ or `g++` $\ge 9$)
-- Standard `make` (or CMake $\ge 3.16$)
-- **Zero external package dependencies** (bundled header-only `nlohmann/json.hpp`).
+- Any C++17 compatible compiler (`clang++` >= 10 or `g++` >= 9)
+- Standard `make` (or CMake >= 3.16)
+- **Zero external package dependencies** (bundled header-only `third_party/nlohmann/json.hpp`).
 
-### Run with One Command
-From a clean download/clone, execute:
+### Option A: One-Command Run (Easiest)
+From a clean checkout, execute directly:
 ```bash
 ./run.sh sample/prices.csv sample/rules.json
 ```
 *(The script automatically compiles the optimized binary on first run and executes it).*
 
-### Manual Build Options
-- **Via Make**:
-  ```bash
-  make -j4
-  ./price_alert sample/prices.csv sample/rules.json
-  ```
-- **Via CMake**:
-  ```bash
-  cmake -B build -DCMAKE_BUILD_TYPE=Release
-  cmake --build build
-  ./build/price_alert sample/prices.csv sample/rules.json
-  ```
-
-### Running Tests
+### Option B: Build & Run with Make
 ```bash
+# 1. Build the binary
+make
+
+# 2. Run with prices CSV and rules JSON
+./price_alert sample/prices.csv sample/rules.json
+
+# 3. Run all unit tests and CLI contract tests
 make test
-# or with CMake:
+```
+
+### Option C: Build & Run with CMake
+```bash
+# 1. Configure and build
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+
+# 2. Run the binary
+./build/price_alert sample/prices.csv sample/rules.json
+
+# 3. Run all tests via CTest
 ctest --test-dir build --output-on-failure
+```
+
+### Expected Output
+When run on the sample dataset, the tool prints:
+```text
+2026-09-03 r1 INFY level below 1500
+2026-09-24 r2 TCS ma_cross 5/20 above
 ```
 
 ---
